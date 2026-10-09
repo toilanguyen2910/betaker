@@ -1,67 +1,76 @@
-# 🛡️ BetHacker
+# 🛡️ BetAker
 
-> **AI-Powered Penetration Testing & Offensive Security Assistant**  
-> Trợ lý AI dòng lệnh chuyên biệt cho kiểm thử bảo mật và an ninh mạng.
+> **AI-Powered Security Code Auditor & Automated Patching CLI Tool**  
+> Trợ lý AI dòng lệnh chuyên sâu về kiểm toán an ninh mã nguồn và tự động tạo bản vá bảo mật.
 
 ---
 
-## 🚀 Tính Năng Chính (MVP)
+## 🚀 Tính Năng Nổi Bật
 
-* 🤖 **ReAct Agent Loop**: Tự động phân tích mục tiêu, lập kế hoạch dò quét, gọi công cụ và tổng hợp báo cáo.
-* 🛡️ **Human-in-the-loop Gate**: Mọi lệnh shell đều hiển thị rõ ràng và hỏi quyền xác nhận `[Y/n]` của bạn trước khi thực thi.
-* 🛑 **Safety Blacklist**: Tự động chặn các câu lệnh nguy hiểm gây phá hủy hệ thống (`rm -rf`, `format`, `del /f /s /q`, `shutdown`,...).
-* 🌐 **Multi-Provider LLM**: Hỗ trợ Google Gemini, OpenAI, DeepSeek, OpenRouter thông qua file `.env`.
-* 📁 **Workspace Management**: Quản lý đọc, ghi log scan và tệp tin trong thư mục `./workspace`.
-* 🐳 **Docker-Ready**: Chuẩn bị sẵn `Dockerfile` (dựa trên Kali Linux Rolling) để đóng gói chạy container cách ly bất cứ khi nào bạn muốn.
+* 🔍 **Bộ Quét Đa Ngôn Ngữ (Polyglot SAST)**: Hỗ trợ quét và phát hiện các lỗ hổng theo chuẩn **OWASP Top 10** trên **Python, JavaScript/TypeScript, Go, PHP**:
+  * SQL Injection (SQLi)
+  * Command Injection (CMDi)
+  * Path Traversal
+  * Insecure Deserialization
+  * Hardcoded Secrets & API Keys
+  * SSRF & Cross-Site Scripting (XSS)
+* 📦 **Kiểm Tra Lỗ Hổng Phụ Thuộc (SCA)**: Tự động phân tích các tệp tin `requirements.txt` và `package.json` đối chiếu với cơ sở dữ liệu tư vấn CVE để cảnh báo các thư viện bị lỗi.
+* 🤖 **AI Root Cause Analysis & Auto-Patching**: Kết nối với mô hình AI (**DeepSeek**, Gemini, OpenAI) để phân tích nguyên nhân gốc rễ và tự động sinh bản vá code an toàn.
+* 🛡️ **An Toàn Tuyệt Đối Khi Vá Lỗi**:
+  * Xem trước bảng so sánh khác biệt (**Unified Diff**).
+  * Tự động tạo file sao lưu `.bak` trước khi ghi đè.
+  * Hỗ trợ lệnh `/rollback` để hoàn tác code ngay lập tức nếu cần.
+* 💻 **Giao Diện Rich Terminal CLI**: Bảng màu trực quan, phân loại mức độ rủi ro (Critical, High, Medium, Low), hỗ trợ các lệnh tương tác: `/audit`, `/deps`, `/rollback`, `/report`.
+* ✅ **Hệ Thống Kiểm Thử Tự Động**: Tích hợp sẵn 176+ test cases E2E và adversarial probes với tỷ lệ thành công 100%.
 
 ---
 
 ## ⚡ Cài Đặt & Sử Dụng
 
-### 1. Chuẩn bị môi trường (Chạy trên Host)
+### 1. Cài đặt môi trường
 
 1. Sao chép file cấu hình mẫu `.env.example` thành `.env`:
    ```bash
    cp .env.example .env
    ```
-2. Mở file `.env` và điền API Key của mô hình bạn muốn dùng:
+2. Điền API Key trong file `.env` (ví dụ DeepSeek hoặc Gemini):
    ```env
-   LLM_PROVIDER=gemini
-   LLM_MODEL=gemini-2.5-flash
-   GEMINI_API_KEY=your_gemini_api_key_here
+   LLM_PROVIDER=deepseek
+   LLM_MODEL=deepseek-chat
+   DEEPSEEK_API_KEY=your_deepseek_api_key
    ```
 
-3. Cài đặt các thư viện cần thiết:
+3. Cài đặt các thư viện phụ thuộc:
    ```bash
    pip install -r requirements.txt
    ```
 
-### 2. Khởi chạy BetHacker
+### 2. Khởi chạy BetAker
 
 ```bash
 python main.py
 ```
 
-Khi chạy, giao diện dòng lệnh tương tác sẽ xuất hiện. Bạn có thể nhập mục tiêu như:
-* `Hãy kiểm tra các cổng mở và công nghệ web trên scanme.nmap.org`
-* `Phân tích xem địa chỉ IP 192.168.1.10 có chạy dịch vụ SMB hoặc HTTP không`
+### 3. Các lệnh điều khiển trong CLI:
+* `/audit <đường_dẫn>`: Quét kiểm toán an ninh cho một file hoặc toàn bộ thư mục dự án.
+* `/deps`: Quét các thư viện phụ thuộc để tìm CVE đã biết.
+* `/rollback <file>`: Khôi phục lại file gốc từ bản sao lưu `.bak`.
+* `/report`: Xuất báo cáo kiểm toán bảo mật chi tiết ra file Markdown trong thư mục workspace.
+* `/help`: Hiển thị hướng dẫn sử dụng.
+* `/exit`: Thoát chương trình.
 
 ---
 
-## 🐳 Chạy bằng Docker (Tùy chọn)
-
-Nếu sau này bạn cài đặt Docker và muốn chạy biệt lập trong môi trường **Kali Linux**:
+## 🧪 Chạy Kiểm Thử Tự Động
 
 ```bash
-# Build image
-docker build -t bethacker .
-
-# Chạy container
-docker run -it --rm -v ${PWD}/workspace:/app/workspace --env-file .env bethacker
+pytest tests/
 ```
+
+Toàn bộ 176 bài test sẽ được thực thi tự động để kiểm tra độ chính xác của bộ lọc SAST, bộ phân tích SemVer SCA, và cơ chế vá lỗi an toàn.
 
 ---
 
-## ⚖️ Tuyên Bố Trách Nhiệm (Disclaimer)
+## 📄 Bản Quyền & Giấy Phép
 
-Công cụ này chỉ được phép sử dụng cho mục đích **nghiên cứu giáo dục, thi đấu CTF, hoặc kiểm thử bảo mật trên các hệ thống có văn bản cấp phép hợp pháp**. Tác giả không chịu trách nhiệm về bất kỳ hành vi lạm dụng nào.
+Phát triển bởi [@toilanguyen2910](https://github.com/toilanguyen2910) - Được phát hành theo giấy phép MIT.
