@@ -1,6 +1,7 @@
 import subprocess
 import shlex
 import re
+from pathlib import Path
 from typing import Tuple
 from config import Config
 
@@ -36,14 +37,19 @@ def execute_command(command: str, timeout: int = None) -> Tuple[int, str, str]:
         return -1, "", reason
 
     try:
+        workspace = Path(Config.WORKSPACE_DIR).resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+
         # Run inside shell to support pipes and CLI utilities
         process = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
-            cwd=Config.WORKSPACE_DIR
+            cwd=str(workspace)
         )
         stdout = process.stdout or ""
         stderr = process.stderr or ""
@@ -58,4 +64,4 @@ def execute_command(command: str, timeout: int = None) -> Tuple[int, str, str]:
     except subprocess.TimeoutExpired:
         return -2, "", f"Error: Command timed out after {timeout}s / Lỗi: Lệnh vượt quá thời gian cho phép ({timeout} giây) và đã bị ngắt tự động."
     except Exception as e:
-        return -3, "", f"Execution error / Lỗi thực thi hệ thống: {str(e)}"
+        return -3, "", f"Execution error: {str(e)} / Lỗi thực thi hệ thống: {str(e)}"

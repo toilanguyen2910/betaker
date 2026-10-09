@@ -458,10 +458,31 @@ class TestDangerousCommandBoundaries:
 
     def test_execute_command_timeout(self, isolated_workspace):
         # Run a command with 1 second timeout
-        cmd = "python3 -c \"import time; time.sleep(5)\""
+        cmd = f'"{sys.executable}" -c "import time; time.sleep(5)"'
         returncode, stdout, stderr = execute_command(cmd, timeout=1)
         assert returncode == -2
         assert "vượt quá thời gian" in stderr
+
+    def test_execute_command_utf8_non_ascii(self, isolated_workspace):
+        # Verify Vietnamese text and emoji are returned without decoding crashes or mojibake
+        cmd = f'"{sys.executable}" -c "import sys; sys.stdout.buffer.write(\'Ti\\u1ebfng Vi\\u1ec7t c\\u00f3 d\\u1ea5u v\\u00e0 emoji \\U0001f680\\n\'.encode(\'utf-8\'))"'
+        returncode, stdout, stderr = execute_command(cmd)
+        assert returncode == 0
+        assert "Tiếng Việt có dấu và emoji" in stdout
+        assert "🚀" in stdout
+
+    def test_execute_command_auto_creates_missing_workspace(self, tmp_path, monkeypatch):
+        # Verify missing workspace directory is auto-created
+        missing_ws = tmp_path / "missing_auto_create_workspace"
+        assert not missing_ws.exists()
+        monkeypatch.setattr(Config, "WORKSPACE_DIR", missing_ws)
+
+        cmd = f'"{sys.executable}" -c "print(\'workspace_created\')"'
+        returncode, stdout, stderr = execute_command(cmd)
+        assert returncode == 0
+        assert "workspace_created" in stdout
+        assert missing_ws.exists()
+        assert missing_ws.is_dir()
 
     def test_dangerous_command_case_variations(self):
         for cmd in ["SHUTDOWN", "rEbOoT", "FOrMaT d:"]:

@@ -1,86 +1,118 @@
-# Project: BetHacker — Interactive Security Code Auditor & Automated Patching CLI
+# Project: BetAker — Security Auditing CLI Audit, Hardening & Polyglot SAST Expansion
 
 ## Architecture
-BetHacker is a production-grade, defensive Security Code Auditor and Automated Patching CLI in Python.
+BetAker is a defensive Security Code Auditor and Automated Patching CLI in Python.
 The system is structured into five core decoupled subsystems:
-1. **SAST & SCA Engine (`tools/scanner.py`, `tools/sca.py`, `tools/advisories.py`)**:
-   - SAST: Hybrid pattern and lexical/AST inspection for Python, JavaScript/TypeScript, Go, and PHP detecting OWASP Top 10 vulnerabilities (SQLi, CMDi, Path Traversal, Insecure Deserialization, Hardcoded Secrets) with exact line numbers, code snippets, and severity ratings.
-   - SCA: Dependency manifest auditing (`requirements.txt`, `package.json`) using zero-dependency SemVer/PEP 440 comparison against an offline CVE advisory database.
-2. **LLM Root Cause & Patch Engine (`llm/client.py`, `llm/providers.py`, `agent/prompts.py`, `agent/core.py`)**:
-   - Provider abstraction (`BaseLLMProvider`) supporting DeepSeek, Google Gemini, OpenAI, and a guaranteed zero-crash `OfflineMockProvider` for keyless/testing environments.
-   - Defensive prompt engineering and structured JSON outputs extracting root cause explanation, CVSS/severity rating, and clean logic-preserving patch code.
-3. **Safe Patching & Rollback Engine (`tools/patcher.py`)**:
-   - Unified diff generation using standard ASCII headers (`a/file`, `b/file`).
-   - Interactive confirmation prompt (`Confirm.ask`, overrideable via `auto_approve=True`).
-   - Atomic file updates (`tempfile`, `os.fsync`, `os.replace`) to prevent file corruption.
-   - Automatic `.bak` creation and byte-verified rollback restoring files to identical pre-patch state.
-4. **Interactive Rich CLI & Reporting (`main.py`, `tools/reporter.py`)**:
-   - Defensive auditor terminal persona with Rich color-coded severity tables, syntax highlighting, and progress status.
-   - Commands: `/audit [path]`, `/deps [path]`, `/rollback [file]`, `/report [format] [output]`, `/help`, `/clear`, `/exit`.
-   - Headless CLI arguments (`--audit`, `--deps`, `--rollback`, `--report`, `--auto-approve`, `--json`) for automation.
-5. **E2E & 4-Tier Automated Test Suite (`tests/`, `pytest`)**:
-   - Comprehensive test suite covering Tiers 1-4 with 100% pass rate, followed by Tier 5 adversarial hardening.
+1. **Polyglot SAST & Suppression Engine (`tools/scanner.py`)**:
+   - Lexical scanner for Python, JavaScript/TypeScript, Go, and PHP detecting OWASP Top 10 vulnerabilities (SQLi, CMDi, Path Traversal, Secrets, Deserialization, SSRF, LFI, NoSQLi, Weak Crypto, XSS).
+   - Comment-aware false positive suppression engine supporting `#nosec`, `//nosec`, `/* nosec */`, and `# bethacker:ignore`. Immune to string literal evasion.
+   - Language-aware false positive filters (safe parameterization, Go `exec.Command` constant slices, JS `child_process.spawn` array args, DB `exec` disambiguation).
+2. **SCA Dependency & Manifest Engine (`tools/sca.py`, `tools/advisories.py`)**:
+   - Zero-dependency SemVer/PEP 440 comparison against an offline CVE database for `requirements.txt` and `package.json`.
+   - Null-byte and corrupted manifest safety, returning graceful empty findings instead of uncaught exceptions.
+3. **Safe File Operations & Atomic Patching (`tools/file_ops.py`, `tools/patcher.py`)**:
+   - Strict workspace containment (`_resolve_safe_path` enforcing `relative_to(Config.WORKSPACE_DIR)`).
+   - Atomic patching via `tempfile`, `os.replace`, and `os.fsync`.
+   - Byte-verified rollback via SHA-256 hash checking and proper `.bak` extension stripping.
+4. **Agent Orchestration, Offline Mock & CLI (`agent/core.py`, `llm/client.py`, `main.py`, `tools/terminal.py`)**:
+   - Safe tool dispatching validating dictionary argument types.
+   - Robust offline execution fallback (`OfflineMockProvider`) when LLM API keys are not configured.
+   - Headless CLI flags (`--audit`, `--deps`, `--rollback`, `--report`, `--json`) and Rich interactive terminal REPL.
+   - Platform-agnostic subprocess execution (`sys.executable`) with explicit UTF-8 decoding and timeout protection.
+5. **Automated Verification Suite (`tests/`, `pytest`)**:
+   - 4-Tier test suite covering features, boundaries, cross-language combinations, and real-world workloads.
+   - 100% pytest pass rate on Windows and POSIX environments.
+   - Adversarial Tier 5 coverage hardening.
 
 ---
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | SAST Polyglot Rules | Detect SQLi, CMDi, Path Traversal, Deserialization, Secrets across Python, JS/TS, Go, PHP with line numbers & snippets | M1 | ORIGINAL_REQUEST §R1 |
-| 2 | False Positive Reduction | Filter out safe parameterized SQL, constants, non-vulnerable usages | M1 | ORIGINAL_REQUEST §R1 |
-| 3 | Dependency Manifest SCA | Parse requirements.txt (PEP 508/440) and package.json with SemVer comparison against offline CVE advisories | M1 | ORIGINAL_REQUEST §R1 |
-| 4 | Multi-Provider LLM Engine | Provider abstractions for DeepSeek, Gemini, OpenAI | M2 | ORIGINAL_REQUEST §R2 |
-| 5 | Offline Mock LLM Provider | Deterministic zero-crash offline fallback generating root cause, severity & clean patch | M2 | ORIGINAL_REQUEST §R2 |
-| 6 | Defensive Prompt & Agent | Restructure prompt persona for defensive code auditing and structured JSON patch output | M2 | ORIGINAL_REQUEST §R2 |
-| 7 | Git-Compatible Unified Diff | Generate clean unified diffs with ASCII headers avoiding Windows CP1252 charmap encoding errors | M3 | ORIGINAL_REQUEST §R3 |
-| 8 | Safe Atomic Patching & Backup | Automatic .bak backup creation and atomic file swap (tempfile + os.replace) | M3 | ORIGINAL_REQUEST §R3 |
-| 9 | Byte-Verified Rollback | Restore .bak backup identically and verify byte-for-byte matching | M3 | ORIGINAL_REQUEST §R3 |
-| 10 | Interactive Rich Terminal CLI | Interactive REPL with color-coded severity tables and Rich panels | M4 | ORIGINAL_REQUEST §R4 |
-| 11 | CLI Commands Handler | Implement /audit, /deps, /rollback, /report, /help, /clear, /exit | M4 | ORIGINAL_REQUEST §R4 |
-| 12 | Headless Automation Flags | Support CLI flags (--audit, --deps, --rollback, --report, --auto-approve) | M4 | ORIGINAL_REQUEST §R4 |
-| 13 | Multi-Format Reporting | Export security audit reports to JSON and Markdown/HTML | M4 | ORIGINAL_REQUEST §R4 |
-| 14 | E2E 4-Tier Test Suite | Tiers 1-4 opaque-box and unit tests covering all features with 100% pytest pass rate | M5 & TestTrack | ORIGINAL_REQUEST §R4 |
-| 15 | Tier 5 Adversarial Hardening | White-box adversarial testing, edge cases, mutation/stress testing | M5 | Project Pattern |
+| 1 | Platform-Agnostic Subprocess Invocation | Use `sys.executable` with quotation in subprocess timeout tests instead of hardcoded `python3` | M1 | ORIGINAL_REQUEST §R1 |
+| 2 | Terminal Subprocess UTF-8 & Workspace Safety | Explicit UTF-8 decoding (`encoding="utf-8", errors="replace"`) and workspace directory auto-creation in `tools/terminal.py` | M1 | ORIGINAL_REQUEST §R1 |
+| 3 | Strict Sandbox File Boundary Confinement | Enforce `relative_to(Config.WORKSPACE_DIR)` in `tools/file_ops.py:_resolve_safe_path` to block directory traversal escapes | M2 | ORIGINAL_REQUEST §R2 |
+| 4 | Null-Byte & Malformed Input Exception Safety | Prevent unhandled `ValueError` crashes in `scanner.py`, `sca.py`, `file_ops.py` on null bytes, binary files, or missing directories | M2 | ORIGINAL_REQUEST §R2 |
+| 5 | Atomic Patching & Byte-Verified Rollback | Atomic write (`tempfile` + `os.replace` + `os.fsync`), `.bak` suffix normalization, SHA-256 verification on rollback in `tools/patcher.py` | M2 | ORIGINAL_REQUEST §R2 |
+| 6 | Agent & CLI Robustness & Keyless Fallback | Non-dict JSON validation in `agent/core.py`, `OfflineMockProvider` fallback in `llm/client.py`, and headless CLI flags in `main.py` | M2 | ORIGINAL_REQUEST §R2 |
+| 7 | Suppression Engine Hardening & Evasion Immunity | Parse suppression directives exclusively from comments outside quotes; support `#nosec`, `//nosec`, `/* nosec */` with flexible whitespace | M3 | ORIGINAL_REQUEST §R3 |
+| 8 | False-Positive Filtering & Disambiguation | Add FP filters for Go `exec.Command` and JS `child_process.spawn` array usages; disambiguate DB `exec(...)` from `SEC-DESER-005` | M3 | ORIGINAL_REQUEST §R3 |
+| 9 | Polyglot SSRF Detection Rule | Implement `SEC-SSRF-007` covering Python (`requests`, `urllib`), JS (`axios`, `fetch`), Go (`http.Get`), PHP (`curl_exec`) | M3 | ORIGINAL_REQUEST §R3 |
+| 10 | PHP File Inclusion Rule | Implement `SEC-LFI-008` covering PHP dynamic `include`, `require`, `include_once`, `require_once` | M3 | ORIGINAL_REQUEST §R3 |
+| 11 | NoSQLi & Weak Cryptography Rules | Implement `SEC-NOSQLI-009` (NoSQLi), `SEC-CRYPTO-010` (Weak Crypto: MD5, SHA1, DES), and `SEC-XSS-011` (XSS) | M3 | ORIGINAL_REQUEST §R3 |
+| 12 | Scanner Parsing & Regex Robustness | Handle nested parentheses `((...))`, multiline backslashes, keyword arguments (`query=`, `sql=`), and f-string variable interpolation | M3 | ORIGINAL_REQUEST §R3 |
+| 13 | Automated Regression & Verification Tests | Comprehensive unit and integration test suite for all fixes and new rules; 100% pass on pytest across Windows & POSIX | M4 | ORIGINAL_REQUEST §R4 |
+| 14 | Tier 5 Adversarial Coverage Hardening | White-box adversarial probing, stress tests, and mutation coverage verification | M4 | Project Pattern |
 
 ---
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | SAST & SCA Engine | Implement polyglot SAST rules (Py, JS/TS, Go, PHP) and dependency SCA (`tools/scanner.py`, `tools/sca.py`, `tools/advisories.py`) | none | IN_PROGRESS |
-| M2 | LLM Analysis & Patch Engine | Implement provider abstraction, DeepSeek/Gemini/OpenAI + OfflineMockProvider, structured prompts (`llm/`, `agent/`) | M1 | PLANNED |
-| M3 | Safe Patching & Rollback | Implement unified diffs, atomic patching, .bak backups, and byte-verified rollback (`tools/patcher.py`) | none | PLANNED |
-| M4 | Interactive Rich CLI & Reporting | Implement Rich interactive REPL, /audit, /deps, /rollback, /report, headless flags, report generation (`main.py`, `tools/reporter.py`) | M1, M2, M3 | PLANNED |
-| M5 | E2E Test Suite & Adversarial Hardening | Phase 1: 100% pass on E2E test suite (Tiers 1-4). Phase 2: Tier 5 adversarial hardening | M1, M2, M3, M4 | PLANNED |
+| M1 | Cross-Platform Test Reliability & Subprocess Hardening | Platform-agnostic `sys.executable` execution in tests and UTF-8 / workspace safety in `tools/terminal.py` | none | IN_PROGRESS |
+| M2 | Codebase Self-Audit & Security Hardening | Sandbox path traversal confinement, atomic patching, rollback fix, null-byte safety, agent validation, offline CLI fallback | M1 | PLANNED |
+| M3 | Polyglot SAST Rule Expansion & Suppression Engine | Suppression evasion fix, FP filters for Go/JS, new OWASP rules (SSRF, LFI, NoSQLi, Crypto, XSS), parsing robustness | M1 | PLANNED |
+| M4 | Final Milestone: 100% E2E Test Suite Pass & Adversarial Hardening | Phase 1: Pass 100% of E2E tests (Tiers 1-4). Phase 2: Tier 5 adversarial coverage hardening | M1, M2, M3, E2E-Testing-Track | PLANNED |
 
 ---
 
 ## Interface Contracts
 
-### SAST/SCA Engine (`tools/scanner.py`) ↔ CLI & Agent
-- `scan_file(filepath: str | Path) -> list[VulnerabilityFinding]`
-- `scan_directory(dirpath: str | Path, recursive: bool = True) -> list[VulnerabilityFinding]`
-- `scan_dependencies(manifest_path: str | Path) -> list[DependencyFinding]`
-- `VulnerabilityFinding`: dataclass / pydantic model with:
-  `id: str, rule_id: str, title: str, severity: str (CRITICAL|HIGH|MEDIUM|LOW), file: str, line: int, snippet: str, description: str, language: str`
-- `DependencyFinding`: dataclass / pydantic model with:
-  `package: str, current_version: str, vulnerable_range: str, fixed_version: str, cve: str, severity: str, advisory: str`
+### Subprocess & Terminal Execution (`tools/terminal.py`)
+- `execute_command(command: str, timeout: int = 30) -> tuple[int, str, str]`
+  - Returns `(returncode, stdout, stderr)`.
+  - On timeout: return `(-2, "", "Error: Command timed out...")`.
+  - On execution error: return `(-3, "", "Execution error: ...")`.
+  - Encoding: explicit UTF-8 with `errors="replace"`.
+  - Workspace: auto-creates `Config.WORKSPACE_DIR` if missing.
 
-### LLM Engine (`llm/client.py`) ↔ Agent & CLI
-- `BaseLLMProvider.analyze_and_patch(vulnerability: VulnerabilityFinding, source_code: str) -> PatchResult`
-- `PatchResult`:
-  `root_cause: str, severity: str, explanation: str, patched_code: str, diff: str, confidence: float`
-- `get_llm_client(provider_name: str | None = None) -> BaseLLMProvider` (returns configured provider or `OfflineMockProvider` fallback if keys missing)
+### File Operations & Sandbox Confinement (`tools/file_ops.py`)
+- `_resolve_safe_path(filepath: str | Path) -> Path`
+  - Rejects null bytes (`\x00`) with `ValueError` caught and handled cleanly.
+  - Resolves path and strictly validates `resolved.relative_to(Config.WORKSPACE_DIR.resolve())`.
+  - Raises `PermissionError` if path escapes workspace sandbox.
+- `read_file(filepath: str | Path) -> str`
+- `write_file(filepath: str | Path, content: str) -> bool`
+- `append_file(filepath: str | Path, content: str) -> bool`
+- `list_directory(dirpath: str | Path = ".") -> list[str]`
 
-### Patching Engine (`tools/patcher.py`) ↔ Agent & CLI
-- `generate_diff(filepath: str | Path, original_content: str, patched_content: str) -> str`
-- `create_backup(filepath: str | Path) -> Path`
+### Atomic Patching & Rollback (`tools/patcher.py`)
 - `apply_patch(filepath: str | Path, patched_content: str, auto_approve: bool = False) -> tuple[bool, str]`
-- `rollback(filepath_or_backup: str | Path) -> tuple[bool, str]`
+  - Atomic write via temporary file, `os.replace`, and `os.fsync`.
+  - Automatic `.bak` creation with SHA-256 hash tracking.
+- `rollback_backup(filepath_or_backup: str | Path) -> tuple[bool, str]`
+  - Accepts either original path or `.bak` path (strips `.bak` properly).
+  - Verifies restored file SHA-256 against pre-patch hash.
+- `rollback(filepath_or_backup: str | Path) -> tuple[bool, str]` (alias)
 - `list_backups(directory: str | Path = ".") -> list[tuple[Path, Path]]`
 
-### Reporting Engine (`tools/reporter.py`) ↔ CLI
-- `export_report(findings: list, format: str = "json" | "markdown", output_path: str | Path | None = None) -> str`
+### Polyglot SAST Scanner (`tools/scanner.py`)
+- `scan_file(filepath: str | Path) -> list[VulnerabilityFinding]`
+  - Gracefully handles null bytes and missing/binary files (returns `[]` without unhandled exceptions).
+- `scan_directory(dirpath: str | Path, recursive: bool = True) -> list[VulnerabilityFinding]`
+  - Returns `[]` if directory does not exist or has null bytes.
+- `is_suppressed_by_directive(line_str: str, file_content: str | None = None, line_num: int = 1) -> bool`
+  - Checks suppression comments outside string literals.
+  - Supports `#nosec`, `//nosec`, `/* nosec */`, and `# bethacker:ignore`.
+- Rules catalog:
+  - `SEC-SQLI-001`, `SEC-CMDI-002`, `SEC-TRAV-003`, `SEC-SECR-004`, `SEC-DESER-005`, `SEC-MISC-006`
+  - `SEC-SSRF-007` (SSRF), `SEC-LFI-008` (PHP LFI), `SEC-NOSQLI-009` (NoSQLi), `SEC-CRYPTO-010` (Weak Crypto), `SEC-XSS-011` (XSS)
+
+### SCA Engine (`tools/sca.py`)
+- `scan_dependencies(manifest_path: str | Path) -> list[DependencyFinding]`
+  - Rejects null bytes and binary content gracefully.
+- `scan_all_manifests(dirpath: str | Path = ".") -> list[DependencyFinding]`
+
+### LLM Client & Offline Fallback (`llm/client.py`)
+- `get_llm_client(provider_name: str | None = None) -> BaseLLMProvider`
+  - If API key is missing or invalid, falls back to `OfflineMockProvider` instead of raising unhandled `ValueError` or exiting.
+
+### Agent & CLI (`agent/core.py`, `main.py`)
+- `BetAkerAgent.dispatch_tool(tool_name: str, args: dict) -> tuple[str, bool]`
+  - Validates `isinstance(args, dict)` to prevent uncaught `AttributeError`.
+- `main.py`:
+  - Headless flags: `--audit [path]`, `--deps [path]`, `--rollback [path]`, `--report [format] [out]`, `--json`.
+  - Decoupled from online LLM requirement for offline auditing commands.
 
 ---
 
@@ -93,16 +125,16 @@ The system is structured into five core decoupled subsystems:
 - `tools/advisories.py` — Curated offline CVE database and SemVer matcher
 - `tools/patcher.py` — Atomic patcher, diff generator, backup and rollback engine
 - `tools/reporter.py` — Report generation (JSON, Markdown, Rich tables)
-- `tools/file_ops.py` — File listing and safe I/O utilities
+- `tools/file_ops.py` — Safe file I/O utilities and sandbox containment
+- `tools/terminal.py` — Platform-agnostic command execution and guardrails
 - `agent/core.py` — Auditor orchestration agent coordinating scan -> analyze -> patch -> verify
 - `agent/prompts.py` — Defensive security auditor prompts and JSON schema
 - `llm/client.py` — Multi-provider factory and client interface
 - `llm/providers.py` — Concrete providers (DeepSeek, Gemini, OpenAI, OfflineMockProvider)
 - `tests/` — Comprehensive test suite
   - `conftest.py` — Fixtures and vulnerable/safe code samples
-  - `test_scanner_sast.py` — SAST tests across 4 languages
-  - `test_scanner_sca.py` — SCA dependency parsing and SemVer tests
-  - `test_patcher_rollback.py` — Patching, diff, .bak, and rollback tests
-  - `test_llm_providers.py` — LLM providers and OfflineMockProvider tests
-  - `test_cli_commands.py` — CLI commands, REPL, headless flags, and reporting tests
-  - `test_e2e_scenarios.py` — End-to-end integration flows across real-world projects
+  - `test_tier1_features.py` — Core feature tests
+  - `test_tier2_boundaries.py` — Edge case and boundary tests
+  - `test_tier5_adversarial_sast.py` — Adversarial SAST probes
+  - `test_tier5_adversarial_sca.py` — Adversarial SCA probes
+  - `test_sca_stress.py` — Dependency stress tests
