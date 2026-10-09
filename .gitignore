@@ -1,0 +1,24 @@
+# Environment & Secrets (Không bao giờ commit file .env chứa API Key)
+.env
+*.env
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Pytest & Test caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Backups & Workspace
+*.bak
+workspace/
+.agents/
+
+# IDE
+.vscode/
+.idea/
