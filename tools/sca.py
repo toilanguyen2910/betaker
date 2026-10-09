@@ -203,12 +203,13 @@ def parse_requirements_txt(filepath_or_content: Union[str, Path]) -> List[Parsed
         isinstance(filepath_or_content, str) and "\n" not in filepath_or_content and Path(filepath_or_content).is_file()
     ):
         try:
-            content = Path(filepath_or_content).read_text(encoding="utf-8", errors="replace")
+            content = Path(filepath_or_content).read_text(encoding="utf-8-sig", errors="replace")
         except Exception:
             return []
     else:
         content = str(filepath_or_content)
 
+    content = content.lstrip("\ufeff")
     results: List[ParsedPackage] = []
     lines = content.splitlines()
     i = 0
@@ -217,7 +218,7 @@ def parse_requirements_txt(filepath_or_content: Union[str, Path]) -> List[Parsed
     while i < total:
         raw_line = lines[i]
         line_num = i + 1
-        line = raw_line.strip()
+        line = raw_line.strip().lstrip("\ufeff")
 
         # Handle line continuation (\)
         while line.endswith("\\") and (i + 1) < total:
@@ -296,12 +297,13 @@ def parse_package_json(filepath_or_content: Union[str, Path]) -> List[ParsedPack
         isinstance(filepath_or_content, str) and "\n" not in filepath_or_content and Path(filepath_or_content).is_file()
     ):
         try:
-            content = Path(filepath_or_content).read_text(encoding="utf-8", errors="replace")
+            content = Path(filepath_or_content).read_text(encoding="utf-8-sig", errors="replace")
         except Exception:
             return []
     else:
         content = str(filepath_or_content)
 
+    content = content.lstrip("\ufeff")
     results: List[ParsedPackage] = []
     try:
         data = json.loads(content)
@@ -371,9 +373,10 @@ def scan_dependencies(manifest_path: Union[str, Path]) -> List[DependencyFinding
         return findings
 
     try:
-        content = path.read_text(encoding="utf-8", errors="replace")
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
     except Exception:
         return findings
+    content = content.lstrip("\ufeff")
 
     ecosystem = detect_manifest_type(path) or "pip"
 
@@ -388,7 +391,7 @@ def scan_dependencies(manifest_path: Union[str, Path]) -> List[DependencyFinding
             continue
 
         # Extract declared version string from specifier
-        m = re.search(r"(\d+\.\d+(?:\.\d+)?(?:[a-zA-Z0-9\.\-]*)?)", pkg.specifier)
+        m = re.search(r"(\d+(?:\.\d+)*(?:[a-zA-Z0-9\.\-]*)?)", pkg.specifier)
         candidate_ver = m.group(1) if m else None
 
         if not candidate_ver:

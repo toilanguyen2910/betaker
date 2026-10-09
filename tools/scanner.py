@@ -259,7 +259,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "category": "A03:2021 - Injection",
         "cwe": "CWE-89",
-        "pattern": r"(?:execute|cursor\.execute|raw|db\.query)\s*\(\s*(?:f[\"'].*?\{.*?\}|[\"'].*?%s.*?[\"']\s*%|[\"'].*?\+.*?\+)",
+        "pattern": r"""(?i)(?:cursor\s*\.\s*execute|execute|raw|db\s*\.\s*(?:query(?:row)?|exec)|\$pdo\s*->\s*query|mysqli_query)\s*\(\s*(?:[a-zA-Z0-9_\$]+\s*,\s*)*(?:str\s*\(\s*)?(?:f["'].*?\{.*?\}|["'].*?%s.*?["']\s*%|(?:["'].*?["']\s*[\+\.]|[a-zA-Z0-9_\$]+\s*[\+\.]\s*["'])|`.*?\{.*?\}|`.*?\$\{.*?\})""",
         "description": "Câu lệnh SQL được tạo bằng cách nối chuỗi trực tiếp từ biến đầu vào thay vì sử dụng tham số hóa (Parameterized Query / Prepared Statements).",
     },
     {
@@ -268,7 +268,15 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "category": "A03:2021 - Injection",
         "cwe": "CWE-78",
-        "pattern": r"(?:os\.system|os\.popen|subprocess\.call|subprocess\.Popen|subprocess\.run)\s*\(\s*(?:f[\"']|.*?shell\s*=\s*True)",
+        "pattern": r"""(?x)
+        (?:
+            (?:os\.system|os\.popen)\s*\( |
+            subprocess\.(?:call|Popen|run|check_output)\s*\(\s*(?:f["']|.*?shell\s*=\s*True) |
+            exec\.Command(?:Context)?\s*\( |
+            (?:system|shell_exec|passthru|popen|proc_open|pcntl_exec)\s*\( |
+            child_process\.(?:exec|execSync|spawn|spawnSync|execFile)\s*\(
+        )
+        """,
         "description": "Thực thi câu lệnh hệ điều hành với tùy chọn shell=True hoặc nối chuỗi trực tiếp, cho phép kẻ tấn công chèn ký tự điều khiển lệnh (&, |, ;).",
     },
     {
@@ -277,7 +285,14 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "HIGH",
         "category": "A01:2021 - Broken Access Control",
         "cwe": "CWE-22",
-        "pattern": r"(?:open|send_file|send_from_directory|read_file)\s*\(\s*(?:request\.(?:args|form|values|GET|POST)|f[\"'].*?(?:path|filename|file))",
+        "pattern": r"""(?x)
+        (?:
+            (?:open|send_file|send_from_directory|read_file)\s*\(\s*(?:request\.(?:args|form|values|GET|POST)|f["'].*?(?:path|filename|file)) |
+            fs(?:\.promises)?\.(?:readFile|readFileSync|createReadStream|open)\s*\( |
+            (?:os|ioutil)\.(?:ReadFile|Open|OpenFile)\s*\( |
+            (?:file_get_contents|readfile|file_put_contents)\s*\(
+        )
+        """,
         "description": "Đường dẫn file được lấy trực tiếp từ người dùng mà không chuẩn hóa, có thể cho phép đọc trộm các file nhạy cảm trong hệ thống.",
     },
     {
@@ -286,8 +301,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "HIGH",
         "category": "A07:2021 - Identification and Authentication Failures",
         "cwe": "CWE-798",
-        # Allow base64 token characters (+, /, =) per E2E feedback, length {12,}
-        "pattern": r"(?i)(?:api_key|secret_key|private_key|aws_secret|password|access_token)\s*=\s*[\"'][a-zA-Z0-9_\-\.\$\!\#/\+=]{12,}[\"']",
+        "pattern": r"""(?i)["']?(?:\$)??(?:api_?key|secret_?key|private_?key|aws_?secret|password|access_?token)["']?\s*(?::=|:|=)\s*["'][a-zA-Z0-9_\-\.\$\!\#/\+=]{12,}["']""",
         "description": "Mật khẩu, Token hoặc API Key được ghi cứng trực tiếp vào mã nguồn thay vì lưu trữ trong biến môi trường (.env).",
     },
     {
@@ -296,8 +310,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "category": "A08:2021 - Software and Data Integrity Failures",
         "cwe": "CWE-502",
-        # Use \beval\s*\( to avoid ast.literal_eval false positives per E2E feedback
-        "pattern": r"(?:pickle\.loads|yaml\.load\s*\(\s*.*?Loader\s*=\s*(?:yaml\.)?Loader|\beval\s*\(|exec\s*\()",
+        "pattern": r"(?:pickle\.loads|yaml\.load\s*\(\s*.*?Loader\s*=\s*(?:yaml\.)?Loader|\beval\s*\(|\bexec\s*\(|unserialize\s*\()",
         "description": "Sử dụng pickle.loads, eval() hoặc yaml.load không an toàn trên dữ liệu không tin cậy có thể dẫn đến Thực thi Mã từ xa (RCE).",
     },
     {
@@ -487,6 +500,53 @@ def is_suppressed_by_directive(line_str: str) -> bool:
     return any(d in line_str for d in directives)
 
 
+def strip_inline_comment(line: str, lang: str) -> str:
+    """Strips trailing comments from a code line while preserving string literals and URLs."""
+    in_single = False
+    in_double = False
+    in_backtick = False
+    escape = False
+    i = 0
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if escape:
+            escape = False
+            i += 1
+            continue
+        if c == "\\":
+            escape = True
+            i += 1
+            continue
+        if c == "'" and not in_double and not in_backtick:
+            in_single = not in_single
+            i += 1
+            continue
+        if c == '"' and not in_single and not in_backtick:
+            in_double = not in_double
+            i += 1
+            continue
+        if c == "`" and not in_single and not in_double:
+            in_backtick = not in_backtick
+            i += 1
+            continue
+        if not in_single and not in_double and not in_backtick:
+            if (lang in ("python", "php", "config") or lang == "unknown") and c == "#":
+                return line[:i].rstrip()
+            if (lang in ("javascript", "typescript", "go", "php") or lang == "unknown") and line[i:i+2] == "//":
+                return line[:i].rstrip()
+            if (lang in ("javascript", "typescript", "go", "php") or lang == "unknown") and line[i:i+2] == "/*":
+                end_idx = line.find("*/", i + 2)
+                if end_idx != -1:
+                    line = line[:i] + " " + line[end_idx+2:]
+                    n = len(line)
+                    continue
+                else:
+                    return line[:i].rstrip()
+        i += 1
+    return line
+
+
 def is_false_positive_sql(line_str: str) -> bool:
     """Filters out safe parameterized SQL queries."""
     if re.search(r'cursor\.execute\s*\(\s*["\'].*?%s["\']\s*,\s*\(', line_str):
@@ -495,9 +555,11 @@ def is_false_positive_sql(line_str: str) -> bool:
         return True
     if re.search(r'db\.execute\s*\(\s*["\'].*?:[a-zA-Z0-9_]+["\']\s*,\s*\{', line_str):
         return True
-    if re.search(r'db\.Query\s*\(\s*["\'].*?\?["\']\s*,\s*', line_str):
+    if re.search(r'(?i)db\.Query\s*\(\s*["\'].*?\?["\']\s*,\s*', line_str):
         return True
-    if re.search(r'db\.query\s*\(\s*["\'].*?\$[0-9]+["\']\s*,\s*\[', line_str):
+    if re.search(r'(?i)db\.query\s*\(\s*["\'].*?\$[0-9]+["\']\s*,\s*\[', line_str):
+        return True
+    if re.search(r'(?i)db\.query\s*\(\s*["\'].*?\?["\']\s*,\s*\[', line_str):
         return True
     if re.search(r'\$pdo->prepare\s*\(', line_str):
         return True
@@ -514,8 +576,8 @@ def is_false_positive_cmdi(line_str: str) -> bool:
 
 def is_false_positive_path_trav(line_str: str) -> bool:
     """Filters out safe static file open operations."""
-    if re.search(r'open\s*\(\s*["\'][a-zA-Z0-9_\-\./\\]+["\']\s*(?:,\s*["\'][rwa\+b]+["\'])?\s*\)', line_str):
-        if "request." not in line_str and "{" not in line_str and "+" not in line_str:
+    if re.search(r'(?:open|os\.(?:Open|ReadFile)|fs\.(?:readFile|readFileSync))\s*\(\s*["\'][a-zA-Z0-9_\-\./\\]+["\']\s*(?:,\s*["\'][^"\']+["\'])?\s*\)', line_str):
+        if "request." not in line_str and "{" not in line_str and "+" not in line_str and "$_" not in line_str and "req." not in line_str:
             return True
     return False
 
@@ -564,6 +626,10 @@ def is_false_positive_debug(line_str: str) -> bool:
 # 6. SCANNING ENGINE
 # ============================================================================
 
+# Compiled regex for JavaScript bare exec/spawn CMDi detection
+JS_CMDI_REGEX = re.compile(r"""(?:\bexec|\bexecSync|\bspawn|\bspawnSync)\s*\(""")
+
+
 def scan_file(filepath: Union[str, Path]) -> List[VulnerabilityFinding]:
     """Scans a single source code file for static vulnerabilities across supported languages.
 
@@ -587,53 +653,151 @@ def scan_file(filepath: Union[str, Path]) -> List[VulnerabilityFinding]:
     if not lines or not content.strip():
         return findings
 
-    # Polyglot inspection across lines
+    seen: Set[Tuple[str, int]] = set()
+
+    # Pass 1: Line-by-line scanning with inline comment stripping
     for line_num, line in enumerate(lines, start=1):
         line_str = line.strip()
-
-        # 1. Skip comments and directives
-        if is_line_comment(line_str, lang) or is_suppressed_by_directive(line_str):
+        if not line_str:
             continue
 
-        # 2. Evaluate against rule patterns
+        if is_suppressed_by_directive(line_str):
+            continue
+
+        if is_line_comment(line_str, lang):
+            continue
+
+        code_to_match = strip_inline_comment(line_str, lang)
+        if not code_to_match.strip():
+            continue
+
+        # Language-aware dispatch: bare exec(...) in JS/TS is Command Injection (SEC-CMDI-002)
+        if lang in ("javascript", "typescript") and JS_CMDI_REGEX.search(code_to_match):
+            key = ("SEC-CMDI-002", line_num)
+            if key not in seen:
+                seen.add(key)
+                findings.append(VulnerabilityFinding(
+                    id=f"SEC-CMDI-002-{line_num}",
+                    rule_id="SEC-CMDI-002",
+                    title="Command Injection (Thực thi lệnh Shell không lọc dữ liệu)",
+                    severity="CRITICAL",
+                    file=str(path),
+                    line=line_num,
+                    snippet=line_str,
+                    description="Thực thi câu lệnh hệ điều hành với tùy chọn shell=True hoặc nối chuỗi trực tiếp, cho phép kẻ tấn công chèn ký tự điều khiển lệnh (&, |, ;).",
+                    language=lang,
+                    cwe="CWE-78",
+                    category="A03:2021 - Injection",
+                ))
+
         for rule in VULN_PATTERNS:
             rule_id = rule["id"]
 
-            # False-positive filters
-            if rule_id == "SEC-SQLI-001" and is_false_positive_sql(line_str):
+            if rule_id == "SEC-SQLI-001" and is_false_positive_sql(code_to_match):
                 continue
-            if rule_id == "SEC-CMDI-002" and is_false_positive_cmdi(line_str):
+            if rule_id == "SEC-CMDI-002" and is_false_positive_cmdi(code_to_match):
                 continue
-            if rule_id == "SEC-TRAV-003" and is_false_positive_path_trav(line_str):
+            if rule_id == "SEC-TRAV-003" and is_false_positive_path_trav(code_to_match):
                 continue
-            if rule_id == "SEC-SECR-004" and is_false_positive_secret(line_str):
+            if rule_id == "SEC-SECR-004" and is_false_positive_secret(code_to_match):
                 continue
-            if rule_id == "SEC-DESER-005" and is_false_positive_deser(line_str):
+            if rule_id == "SEC-DESER-005" and is_false_positive_deser(code_to_match):
                 continue
-            if rule_id == "SEC-MISC-006" and is_false_positive_debug(line_str):
+            if rule_id == "SEC-MISC-006" and is_false_positive_debug(code_to_match):
                 continue
 
-            # Match regular expression
-            if re.search(rule["pattern"], line_str):
-                if rule_id == "SEC-SECR-004":
-                    m_sec = re.search(rule["pattern"], line_str)
-                    if not m_sec:
-                        continue
+            if re.search(rule["pattern"], code_to_match):
+                key = (rule_id, line_num)
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(VulnerabilityFinding(
+                        id=f"{rule_id}-{line_num}",
+                        rule_id=rule_id,
+                        title=rule["title"],
+                        severity=rule["severity"],
+                        file=str(path),
+                        line=line_num,
+                        snippet=line_str,
+                        description=rule["description"],
+                        language=lang,
+                        cwe=rule.get("cwe", ""),
+                        category=rule.get("category", ""),
+                    ))
 
-                finding = VulnerabilityFinding(
-                    id=f"{rule_id}-{line_num}",
+    # Pass 2: Multiline statements lookahead (strictly activated on unclosed delimiters)
+    for start_idx in range(len(lines)):
+        start_line_str = lines[start_idx].strip()
+        if not start_line_str or is_suppressed_by_directive(start_line_str) or is_line_comment(start_line_str, lang):
+            continue
+
+        clean_start = strip_inline_comment(start_line_str, lang)
+        net_parens = clean_start.count("(") - clean_start.count(")")
+        net_brackets = clean_start.count("[") - clean_start.count("]")
+        net_braces = clean_start.count("{") - clean_start.count("}")
+        is_continuation = clean_start.endswith("\\")
+
+        # Crucial guard: Only look ahead when delimiters are unclosed or line ends with '\'
+        if net_parens <= 0 and net_brackets <= 0 and net_braces <= 0 and not is_continuation:
+            continue
+
+        block_lines = [lines[start_idx]]
+        curr_p = net_parens
+        curr_b = net_brackets
+
+        for lookahead in range(1, 10):
+            if start_idx + lookahead >= len(lines):
+                break
+            nxt = lines[start_idx + lookahead]
+            if is_suppressed_by_directive(nxt):
+                block_lines = []
+                break
+            block_lines.append(nxt)
+            nxt_clean = strip_inline_comment(nxt.strip(), lang)
+            curr_p += nxt_clean.count("(") - nxt_clean.count(")")
+            curr_b += nxt_clean.count("[") - nxt_clean.count("]")
+            if curr_p <= 0 and curr_b <= 0:
+                break
+
+        if not block_lines:
+            continue
+
+        combined_stripped = [strip_inline_comment(l.strip(), lang) for l in block_lines]
+        block_str = " ".join(combined_stripped).strip()
+        start_line_num = start_idx + 1
+
+        for rule in VULN_PATTERNS:
+            rule_id = rule["id"]
+            if (rule_id, start_line_num) in seen:
+                continue
+            if rule_id == "SEC-SQLI-001" and is_false_positive_sql(block_str):
+                continue
+            if rule_id == "SEC-CMDI-002" and is_false_positive_cmdi(block_str):
+                continue
+            if rule_id == "SEC-TRAV-003" and is_false_positive_path_trav(block_str):
+                continue
+            if rule_id == "SEC-SECR-004" and is_false_positive_secret(block_str):
+                continue
+            if rule_id == "SEC-DESER-005" and is_false_positive_deser(block_str):
+                continue
+            if rule_id == "SEC-MISC-006" and is_false_positive_debug(block_str):
+                continue
+
+            if re.search(rule["pattern"], block_str):
+                seen.add((rule_id, start_line_num))
+                findings.append(VulnerabilityFinding(
+                    id=f"{rule_id}-{start_line_num}",
                     rule_id=rule_id,
                     title=rule["title"],
                     severity=rule["severity"],
                     file=str(path),
-                    line=line_num,
-                    snippet=line_str,
+                    line=start_line_num,
+                    snippet=start_line_str,
                     description=rule["description"],
                     language=lang,
                     cwe=rule.get("cwe", ""),
                     category=rule.get("category", ""),
-                )
-                findings.append(finding)
+                    end_line=start_idx + len(block_lines),
+                ))
 
     # Sort findings by line number
     findings.sort(key=lambda f: f.line)

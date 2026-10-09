@@ -384,5 +384,21 @@ def run_suite():
 
     return passes, findings_bugs
 
+
+# =========================================================================
+# Pytest Integration Test Functions
+# =========================================================================
+
+class TestSCAStressBattery:
+    """Native pytest suite executing the Challenger M1_2 stress battery."""
+
+    def test_sca_stress_all_checks(self):
+        """Executes all 29 checks and verifies 0 bugs reproduced."""
+        passes, bugs = run_suite()
+        assert len(bugs) == 0, f"SCA stress tests failed with {len(bugs)} reproduced bugs: {bugs}"
+        assert len(passes) >= 29, f"Expected at least 29 passing checks, got {len(passes)}"
+
+
 if __name__ == "__main__":
-    run_suite()
+    passes, bugs = run_suite()
+    sys.exit(1 if bugs else 0)

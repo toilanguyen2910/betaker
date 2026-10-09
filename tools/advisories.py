@@ -42,7 +42,11 @@ class ComparableVersion:
         pre_type = 4  # 4 = Final release (no pre-release)
         pre_num = 0
 
-        pre_match = re.search(r"[\.-]?(dev|alpha|beta|rc|preview|pre|a|b|c)(\d*)", clean, re.IGNORECASE)
+        pre_match = re.search(
+            r"(?:[\.-]|(?<=\d))(dev|alpha|beta|rc|preview|pre|a|b|c)[\.-]?(\d*)(?![a-zA-Z])",
+            clean,
+            re.IGNORECASE,
+        )
         if pre_match:
             tag = pre_match.group(1).lower()
             num_str = pre_match.group(2)
@@ -106,9 +110,11 @@ def evaluate_condition(version: ComparableVersion, op: str, target_str: str) -> 
     """Evaluates a single operator and target version against a ComparableVersion."""
     # Handle wildcard == (e.g. 2.25.*)
     if op in ("==", "===") and "*" in target_str:
-        prefix = target_str.replace("*", "").rstrip(".")
-        clean_raw = version.raw.split("-")[0]
-        return clean_raw.startswith(prefix)
+        prefix = target_str.split("*")[0].rstrip(".")
+        if not prefix:
+            return True
+        target_parts = [int(p) for p in prefix.split(".") if p.isdigit()]
+        return version.numeric[:len(target_parts)] == tuple(target_parts)
 
     # Handle npm caret (^)
     if op == "^":
@@ -170,7 +176,7 @@ def is_version_in_range(version_str: str, range_expr: str) -> bool:
 
     or_branches = [b.strip() for b in range_expr.split("||")]
     for branch in or_branches:
-        cond_matches = re.findall(r"([=><~!]{1,3})\s*([0-9a-zA-Z\.\-\+]+)", branch)
+        cond_matches = re.findall(r"([=><~!\^]{1,3})\s*([0-9a-zA-Z\.\-\+\*]+)", branch)
         if not cond_matches:
             continue
         all_passed = True
@@ -556,8 +562,12 @@ def check_package_vulnerabilities(
     advisories = get_advisories_for_package(ecosystem, package_name)
     vulnerable_matches: List[Advisory] = []
 
-    m = re.search(r"(\d+\.\d+(?:\.\d+)?(?:[a-zA-Z0-9\.\-]*)?)", declared_spec)
+    m = re.search(r"(\d+(?:\.\d+)*(?:[a-zA-Z0-9\.\-]*)?)", declared_spec)
     candidate_ver = m.group(1) if m else None
+
+    is_strict_upper = False
+    if candidate_ver:
+        is_strict_upper = bool(re.search(r"(?:^|[\s,])<(?!=)\s*" + re.escape(candidate_ver), declared_spec))
 
     for adv in advisories:
         is_vuln = False
@@ -568,10 +578,19 @@ def check_package_vulnerabilities(
                     if is_version_in_range(candidate_ver, v_range):
                         is_vuln = True
                         break
+                    # If declared_spec is '< X' and v_range has '< Y' where X <= Y,
+                    # all allowed versions are strictly less than Y, hence vulnerable.
+                    if is_strict_upper:
+                        bound_match = re.search(r"<\s*([0-9a-zA-Z\.\-\+]+)", v_range)
+                        if bound_match:
+                            bound_ver = bound_match.group(1)
+                            if ComparableVersion(candidate_ver) <= ComparableVersion(bound_ver):
+                                is_vuln = True
+                                break
             elif adv.fixed_version:
                 cand = ComparableVersion(candidate_ver)
                 fix = ComparableVersion(adv.fixed_version)
-                if cand < fix and f">={adv.fixed_version}" not in declared_spec:
+                if (cand < fix or (is_strict_upper and cand <= fix)) and f">={adv.fixed_version}" not in declared_spec:
                     is_vuln = True
         else:
             # Unpinned dependency without version
