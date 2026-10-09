@@ -4,10 +4,21 @@ from typing import List, Dict, Any
 from config import Config
 
 def _resolve_safe_path(filepath: str) -> Path:
-    """Ensure target path resolves within or relative to the workspace."""
+    """Resolve target path, confining absolute paths to within the current working tree.
+
+    Relative paths are anchored to WORKSPACE_DIR. Absolute paths outside the
+    workspace are re-anchored to WORKSPACE_DIR to prevent path traversal.
+    """
     path = Path(filepath)
     if not path.is_absolute():
         path = (Config.WORKSPACE_DIR / path).resolve()
+    else:
+        # Confine absolute paths: reject traversal outside workspace
+        try:
+            path.resolve().relative_to(Config.WORKSPACE_DIR.resolve())
+        except ValueError:
+            # Attacker-supplied absolute path escapes workspace → re-anchor
+            path = (Config.WORKSPACE_DIR / path.name).resolve()
     return path
 
 def read_file(filepath: str, max_lines: int = 500) -> str:

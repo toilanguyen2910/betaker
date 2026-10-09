@@ -418,8 +418,12 @@ class TestFindingDataStructure:
             assert pattern["severity"] in valid_severities
 
     def test_finding_categories_align_with_owasp(self):
+        import re as _re
+        _owasp_pattern = _re.compile(r"A\d{2}:\d{4}")
         for pattern in VULN_PATTERNS:
-            assert "A0" in pattern["category"]
+            assert _owasp_pattern.search(pattern["category"]), (
+                f"Rule {pattern['id']} category '{pattern['category']}' does not match OWASP format A##:YYYY"
+            )
             assert "2021" in pattern["category"]
 
     def test_finding_exact_line_numbers(self, tmp_path):

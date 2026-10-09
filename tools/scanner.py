@@ -259,7 +259,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "category": "A03:2021 - Injection",
         "cwe": "CWE-89",
-        "pattern": r"""(?i)(?:cursor\s*\.\s*execute|execute|raw|db\s*\.\s*(?:query(?:row)?|exec)|\$pdo\s*->\s*query|mysqli_query)\s*\(\s*(?:[a-zA-Z0-9_\$]+\s*,\s*)*(?:str\s*\(\s*)?(?:f["'].*?\{.*?\}|["'].*?%s.*?["']\s*%|(?:["'].*?["']\s*[\+\.]|[a-zA-Z0-9_\$]+\s*[\+\.]\s*["'])|`.*?\{.*?\}|`.*?\$\{.*?\})""",
+        "pattern": r"""(?i)(?:cursor\s*\.\s*execute|execute|raw|db\s*\.\s*(?:query(?:row)?|exec)|\$pdo\s*->\s*query|mysqli_query)\s*\(\s*(?:[a-zA-Z0-9_\$]+\s*,\s*)*(?:str\s*\(\s*)?(?:f["'].*?\{.*?\}|["'].*?%s.*?["']\s*%|(?:["'].*?["']\s*[\+\.]|[a-zA-Z0-9_\$]+\s*[\+\.]\s*["'])|`.*?\{.*?\}`|`.*?\$\{.*?\}`)""",
         "description": "Câu lệnh SQL được tạo bằng cách nối chuỗi trực tiếp từ biến đầu vào thay vì sử dụng tham số hóa (Parameterized Query / Prepared Statements).",
     },
     {
@@ -281,7 +281,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
     },
     {
         "id": "SEC-TRAV-003",
-        "title": "Path Traversal (Đọc/Ghi file không kiểm soát đường dẫn)",
+        "title": "Path Traversal / LFI (Đọc/Ghi file không kiểm soát đường dẫn)",
         "severity": "HIGH",
         "category": "A01:2021 - Broken Access Control",
         "cwe": "CWE-22",
@@ -301,7 +301,7 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "severity": "HIGH",
         "category": "A07:2021 - Identification and Authentication Failures",
         "cwe": "CWE-798",
-        "pattern": r"""(?i)["']?(?:\$)??(?:api_?key|secret_?key|private_?key|aws_?secret|password|access_?token)["']?\s*(?::=|:|=)\s*["'][a-zA-Z0-9_\-\.\$\!\#/\+=]{12,}["']""",
+        "pattern": r"""(?i)["']?(?:\$)??(?:api_?key|secret_?key|private_?key|aws_?secret|password|access_?token|auth_?token|client_?secret)["']?\s*(?::=|:|=)\s*["'][a-zA-Z0-9_\-\.\$\!\#/\+=]{12,}["']""",
         "description": "Mật khẩu, Token hoặc API Key được ghi cứng trực tiếp vào mã nguồn thay vì lưu trữ trong biến môi trường (.env).",
     },
     {
@@ -322,7 +322,87 @@ VULN_PATTERNS: List[Dict[str, Any]] = [
         "pattern": r"(?i)(?:DEBUG\s*=\s*True|app\.run\s*\(.*?debug\s*=\s*True)",
         "description": "Bật chế độ Debug trong môi trường chạy ứng dụng có thể làm lộ stack trace và thông tin nội bộ hệ thống.",
     },
+    # -----------------------------------------------------------------------
+    # New rules — R3 expansion
+    # -----------------------------------------------------------------------
+    {
+        "id": "SEC-SSRF-007",
+        "title": "Server-Side Request Forgery / SSRF (Giả mạo yêu cầu phía máy chủ)",
+        "severity": "HIGH",
+        "category": "A10:2021 - Server-Side Request Forgery",
+        "cwe": "CWE-918",
+        "pattern": r"""(?x)
+        (?:
+            requests\s*\.\s*(?:get|post|put|delete|head|patch|request)\s*\(\s*(?:request\.|req\.|url\s*=\s*(?:request\.|req\.)|f["'].*?\{) |
+            urllib(?:\.request)?\s*\.\s*urlopen\s*\(\s*(?:request\.|req\.|url) |
+            http\.(?:get|post)\s*\(\s*(?:req\.|request\.)
+        )
+        """,
+        "description": "URL được lấy từ đầu vào người dùng và truyền trực tiếp vào hàm HTTP client, có thể cho phép kẻ tấn công thực hiện các yêu cầu đến mạng nội bộ hoặc dịch vụ Cloud metadata.",
+        "remediation": "Dùng allowlist URL tĩnh hoặc kiểm tra scheme/host trước khi thực hiện yêu cầu HTTP.",
+    },
+    {
+        "id": "SEC-XSS-008",
+        "title": "Cross-Site Scripting / XSS (Chèn mã kịch bản độc hại phía client)",
+        "severity": "HIGH",
+        "category": "A03:2021 - Injection",
+        "cwe": "CWE-79",
+        "pattern": r"""(?x)
+        (?:
+            \.innerHTML\s*=\s*(?!["']) |
+            \.outerHTML\s*=\s*(?!["']) |
+            document\.write\s*\( |
+            \$\s*\(\s*["'][^"']+["']\s*\)\s*\.html\s*\(\s*(?!["']) |
+            Markup\s*\(\s*(?:request\.|req\.|user_input|f["'])
+        )
+        """,
+        "description": "Nội dung người dùng được chèn trực tiếp vào DOM hoặc phản hồi HTML mà không được escape, cho phép tấn công XSS.",
+        "remediation": "Sử dụng textContent thay innerHTML, hoặc dùng template engine tự động escape.",
+    },
+    {
+        "id": "SEC-REDIR-009",
+        "title": "Open Redirect (Chuyển hướng mở không kiểm soát)",
+        "severity": "MEDIUM",
+        "category": "A01:2021 - Broken Access Control",
+        "cwe": "CWE-601",
+        "pattern": r"""(?x)
+        (?:
+            redirect\s*\(\s*request\.(?:args|form|values|GET|POST)\s*\.\s*get\s*\( |
+            return\s+redirect\s*\(\s*(?:request\.|req\.) |
+            res\.redirect\s*\(\s*(?:req\.|request\.)
+        )
+        """,
+        "description": "URL chuyển hướng được lấy trực tiếp từ tham số người dùng mà không xác thực, có thể bị lợi dụng để chuyển hướng nạn nhân đến trang độc hại.",
+        "remediation": "Dùng allowlist URL nội bộ hoặc chỉ cho phép chuyển hướng đến các đường dẫn tương đối.",
+    },
+    {
+        "id": "SEC-JWT-010",
+        "title": "Hardcoded JWT / Token Secret (Lộ bí mật ký JWT trong mã nguồn)",
+        "severity": "CRITICAL",
+        "category": "A07:2021 - Identification and Authentication Failures",
+        "cwe": "CWE-321",
+        "pattern": r"""(?i)(?:jwt\.(?:encode|decode|sign)|sign\s*\(\s*payload)\s*\(.*?[,\(]\s*["'][A-Za-z0-9_\-\.]{20,}["']""",
+        "description": "Khóa bí mật dùng để ký JWT được ghi cứng trực tiếp vào mã nguồn, cho phép bất kỳ ai có mã nguồn giả mạo token hợp lệ.",
+        "remediation": "Đọc JWT secret từ biến môi trường hoặc secrets manager; sử dụng khóa bất đối xứng (RS256) thay HMAC.",
+    },
+    {
+        "id": "SEC-MASS-011",
+        "title": "Mass Assignment / Prototype Pollution (Gán thuộc tính hàng loạt không kiểm soát)",
+        "severity": "HIGH",
+        "category": "A08:2021 - Software and Data Integrity Failures",
+        "cwe": "CWE-915",
+        "pattern": r"""(?x)
+        (?:
+            Object\.assign\s*\(\s*(?:req\.(?:user|session|body)|user|session)\s*,\s*req\.body |
+            \*\*request\.(?:json|form|get_json)\(\) |
+            update\s*\(\s*\*\*request\.\w+\b
+        )
+        """,
+        "description": "Thuộc tính từ request body được gán trực tiếp vào object/model mà không lọc trường, có thể cho phép kẻ tấn công ghi đè các trường đặc quyền như is_admin, role.",
+        "remediation": "Dùng whitelist tường minh các trường được phép cập nhật; không dùng ** unpacking từ user input trực tiếp.",
+    },
 ]
+
 
 
 # ============================================================================
@@ -495,9 +575,19 @@ def is_line_comment(line_str: str, language: str) -> bool:
 
 
 def is_suppressed_by_directive(line_str: str) -> bool:
-    """Checks for inline security scanner suppression directives."""
-    directives = ("# nosec", "// nosec", "# bethacker:ignore", "// bethacker:ignore")
-    return any(d in line_str for d in directives)
+    """Checks for inline security scanner suppression directives.
+
+    Handles both spaced and compact variants:
+      # nosec, #nosec, // nosec, //nosec, # bethacker:ignore, //bethacker:ignore
+    """
+    lowered = line_str.lower()
+    directives = (
+        "# nosec", "#nosec",
+        "// nosec", "//nosec",
+        "# bethacker:ignore", "//bethacker:ignore",
+        "# betaker:ignore", "//betaker:ignore",
+    )
+    return any(d in lowered for d in directives)
 
 
 def strip_inline_comment(line: str, lang: str) -> str:
@@ -622,6 +712,43 @@ def is_false_positive_debug(line_str: str) -> bool:
     return False
 
 
+def is_false_positive_ssrf(line_str: str) -> bool:
+    """Filters out safe static HTTP calls (hardcoded URLs, test fixtures)."""
+    # Static string URL not from user input
+    if re.search(r'requests\.\w+\s*\(\s*["\'](https?://[^"\']+)["\']', line_str):
+        return True
+    # Localhost / test URLs
+    if re.search(r'(localhost|127\.0\.0\.1|0\.0\.0\.0)', line_str):
+        return True
+    return False
+
+
+def is_false_positive_xss(line_str: str) -> bool:
+    """Filters out safe static innerHTML assignments."""
+    # Assignment of a plain string literal
+    if re.search(r'\.innerHTML\s*=\s*["\'][^"\']*["\']', line_str):
+        return True
+    # DOMPurify or escaping wrapper
+    if any(s in line_str for s in ("DOMPurify", "sanitize(", "escapeHtml(", "htmlspecialchars")):
+        return True
+    return False
+
+
+def is_false_positive_jwt(line_str: str) -> bool:
+    """Filters out safe JWT calls reading secret from env vars."""
+    if any(s in line_str for s in ("os.getenv", "os.environ", "process.env", "os.Getenv", "config.")):
+        return True
+    return False
+
+
+def is_false_positive_mass(line_str: str) -> bool:
+    """Filters out safe whitelisted field updates."""
+    # If there's a schema/validator call nearby, trust it
+    if any(s in line_str for s in ("schema.load(", "validate(", "Serializer(", "only=", "exclude=")):
+        return True
+    return False
+
+
 # ============================================================================
 # 6. SCANNING ENGINE
 # ============================================================================
@@ -705,6 +832,14 @@ def scan_file(filepath: Union[str, Path]) -> List[VulnerabilityFinding]:
                 continue
             if rule_id == "SEC-MISC-006" and is_false_positive_debug(code_to_match):
                 continue
+            if rule_id == "SEC-SSRF-007" and is_false_positive_ssrf(code_to_match):
+                continue
+            if rule_id == "SEC-XSS-008" and is_false_positive_xss(code_to_match):
+                continue
+            if rule_id == "SEC-JWT-010" and is_false_positive_jwt(code_to_match):
+                continue
+            if rule_id == "SEC-MASS-011" and is_false_positive_mass(code_to_match):
+                continue
 
             if re.search(rule["pattern"], code_to_match):
                 key = (rule_id, line_num)
@@ -780,6 +915,14 @@ def scan_file(filepath: Union[str, Path]) -> List[VulnerabilityFinding]:
             if rule_id == "SEC-DESER-005" and is_false_positive_deser(block_str):
                 continue
             if rule_id == "SEC-MISC-006" and is_false_positive_debug(block_str):
+                continue
+            if rule_id == "SEC-SSRF-007" and is_false_positive_ssrf(block_str):
+                continue
+            if rule_id == "SEC-XSS-008" and is_false_positive_xss(block_str):
+                continue
+            if rule_id == "SEC-JWT-010" and is_false_positive_jwt(block_str):
+                continue
+            if rule_id == "SEC-MASS-011" and is_false_positive_mass(block_str):
                 continue
 
             if re.search(rule["pattern"], block_str):
