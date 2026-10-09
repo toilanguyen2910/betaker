@@ -22,31 +22,31 @@ class BetHackerAgent:
         ]
 
     def _default_approval(self, command: str) -> bool:
-        """Hộp thoại phê duyệt mặc định trên Terminal cho người dùng."""
+        """Interactive terminal prompt requesting user approval before command execution."""
         console.print(Panel(
             Syntax(command, "bash", theme="monokai", line_numbers=False),
-            title="[bold yellow]⚠️ YÊU CẦU PHÊ DUYỆT LỆNH SHELL[/bold yellow]",
-            subtitle="[dim]BetHacker muốn thực thi lệnh trên máy host[/dim]",
+            title="[bold yellow]⚠️ SHELL COMMAND APPROVAL REQUIRED[/bold yellow]",
+            subtitle="[dim]BetAker requests permission to execute a host command[/dim]",
             border_style="yellow"
         ))
-        return Confirm.ask("[bold cyan]👉 Bạn có cho phép thực thi lệnh này không?[/bold cyan]", default=True)
+        return Confirm.ask("[bold cyan]👉 Do you approve executing this command?[/bold cyan]", default=True)
 
     def dispatch_tool(self, name: str, args: Dict[str, Any]) -> str:
-        """Điều phối và thực thi công cụ được LLM yêu cầu."""
+        """Dispatch and execute tool requested by the LLM."""
         if name == "run_terminal_command":
             cmd = args.get("command", "").strip()
             if not cmd:
-                return "Lỗi: Không có lệnh nào được chỉ định."
+                return "Error: No command specified."
 
             if Config.REQUIRE_APPROVAL:
                 approved = self.approval_callback(cmd)
                 if not approved:
-                    return f"Người dùng đã TỪ CHỐI thực thi lệnh: '{cmd}'. Hãy đề xuất cách tiếp cận khác."
+                    return f"User REJECTED (TỪ CHỐI) execution of command: '{cmd}'. Please suggest an alternative approach."
 
-            console.print(f"[bold green]⚡ Đang thực thi:[/bold green] [dim]{cmd}[/dim]")
+            console.print(f"[bold green]⚡ Executing:[/bold green] [dim]{cmd}[/dim]")
             returncode, stdout, stderr = execute_command(cmd)
             
-            result = f"Mã thoát (Exit Code): {returncode}\n"
+            result = f"Exit Code: {returncode}\n"
             if stdout:
                 result += f"--- STDOUT ---\n{stdout}\n"
             if stderr:
@@ -65,21 +65,21 @@ class BetHackerAgent:
         elif name == "list_files":
             files = list_workspace_files()
             if not files:
-                return "Thư mục workspace hiện đang trống."
+                return "Workspace directory is currently empty / Thư mục workspace hiện đang trống."
             return json.dumps(files, indent=2, ensure_ascii=False)
 
         else:
-            return f"Lỗi: Không tìm thấy công cụ '{name}'."
+            return f"Error: Tool '{name}' not found / Lỗi: Không tìm thấy công cụ '{name}'."
 
     def step(self, user_input: str) -> str:
-        """Thực hiện một chu kỳ đối thoại ReAct cho đến khi ra kết quả cuối cùng."""
+        """Execute a ReAct agentic reasoning loop until completion."""
         self.history.append({"role": "user", "content": user_input})
-        max_turns = 10  # Tránh vòng lặp vô tận
+        max_turns = 10  # Turn limit to avoid infinite cycles
 
         for _ in range(max_turns):
             response_msg = self.client.chat_completion(self.history)
             
-            # Ghi nhận phản hồi của trợ lý vào lịch sử
+            # Record assistant response in conversation history
             assistant_dict: Dict[str, Any] = {
                 "role": "assistant",
                 "content": response_msg.content or ""
@@ -98,26 +98,26 @@ class BetHackerAgent:
                 ]
             self.history.append(assistant_dict)
 
-            # Nếu không có tool calls, hoàn thành vòng lặp
+            # If no tool calls, completion is reached
             if not response_msg.tool_calls:
                 return response_msg.content or ""
 
-            # Xử lý từng tool call
+            # Execute tool calls
             for tool_call in response_msg.tool_calls:
                 func_name = tool_call.function.name
                 try:
                     args = json.loads(tool_call.function.arguments)
-                except Exception as e:
+                except Exception:
                     args = {}
 
-                console.print(f"[bold magenta]🔧 Gọi công cụ:[/bold magenta] [cyan]{func_name}[/cyan]")
+                console.print(f"[bold magenta]🔧 Calling Tool:[/bold magenta] [cyan]{func_name}[/cyan]")
                 output = self.dispatch_tool(func_name, args)
 
-                # Thêm phản hồi của tool vào lịch sử để LLM tiếp tục suy luận
+                # Feed tool observation back into context
                 self.history.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": output
                 })
 
-        return "Đã đạt giới hạn số lượt suy luận (Turn limit). Vui lòng gửi yêu cầu tiếp theo."
+        return "Turn limit reached. / Đã đạt giới hạn số lượt suy luận (Turn limit). Please submit your next request."

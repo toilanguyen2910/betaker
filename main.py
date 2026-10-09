@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -26,35 +27,36 @@ BANNER = """[bold cyan]
 
 def print_help():
     help_text = """
-[bold yellow]CÁC LỆNH ĐIỀU KHIỂN HỆ THỐNG:[/bold yellow]
- • [bold cyan]/audit <thư_mục_hoặc_file>[/bold cyan] : Quét kiểm toán an ninh tĩnh (SAST) tìm lỗ hổng OWASP Top 10.
- • [bold cyan]/deps[/bold cyan]                         : Quét các file phụ thuộc (requirements.txt / package.json) tìm CVE.
- • [bold cyan]/rollback <đường_dẫn_file>[/bold cyan]    : Khôi phục lại file gốc từ bản sao lưu dự phòng .bak.
- • [bold cyan]/files[/bold cyan]                        : Liệt kê danh sách các tệp tin trong thư mục workspace.
- • [bold cyan]/clear[/bold cyan]                        : Làm mới lịch sử hội thoại hiện tại.
- • [bold cyan]/help[/bold cyan]                         : Hiển thị bảng trợ giúp này.
- • [bold cyan]/exit[/bold cyan]                         : Thoát chương trình.
+[bold yellow]SYSTEM CONTROL COMMANDS:[/bold yellow]
+ • [bold cyan]/audit <file_or_dir>[/bold cyan]   : Run static code security audit (SAST) for OWASP Top 10 vulnerabilities.
+ • [bold cyan]/deps[/bold cyan]                   : Scan dependency manifests (requirements.txt / package.json) for CVEs.
+ • [bold cyan]/rollback <filepath>[/bold cyan]   : Restore original file from its backup (.bak).
+ • [bold cyan]/report[/bold cyan]                 : Generate a comprehensive Markdown audit report in the workspace.
+ • [bold cyan]/files[/bold cyan]                  : List all files currently in the workspace sandbox directory.
+ • [bold cyan]/clear[/bold cyan]                  : Reset conversation history.
+ • [bold cyan]/help[/bold cyan]                   : Display this help message.
+ • [bold cyan]/exit[/bold cyan]                   : Exit BetAker.
 """
-    console.print(Panel(help_text, title="Trợ giúp", border_style="blue"))
+    console.print(Panel(help_text, title="Help & Commands", border_style="blue"))
 
 def handle_audit(target_path: str):
     p = Path(target_path).resolve()
     if not p.exists():
-        console.print(f"[bold red]❌ Đường dẫn không tồn tại:[/bold red] {target_path}")
+        console.print(f"[bold red]❌ Target path does not exist:[/bold red] {target_path}")
         return
 
-    console.print(f"[bold green]🔍 Đang quét kiểm toán an ninh trên:[/bold green] [dim]{p}[/dim]")
+    console.print(f"[bold green]🔍 Running security audit on:[/bold green] [dim]{p}[/dim]")
     findings = scan_directory(str(p))
 
     if not findings:
-        console.print("[bold green]✅ Không phát hiện lỗ hổng bảo mật nào theo tiêu chuẩn OWASP Top 10![/bold green]")
+        console.print("[bold green]✅ No security vulnerabilities detected according to OWASP Top 10 standards![/bold green]")
         return
 
-    table = Table(title=f"Phát hiện {len(findings)} rủi ro bảo mật", border_style="yellow")
-    table.add_column("Mức độ", style="bold")
-    table.add_column("Lỗ hổng", style="cyan")
-    table.add_column("Vị trí", style="magenta")
-    table.add_column("Mô tả", style="white")
+    table = Table(title=f"Detected {len(findings)} Security Findings", border_style="yellow")
+    table.add_column("Severity", style="bold")
+    table.add_column("Vulnerability", style="cyan")
+    table.add_column("Location", style="magenta")
+    table.add_column("Description", style="white")
 
     for f in findings:
         sev = f.get("severity", "MEDIUM")
@@ -67,20 +69,24 @@ def handle_audit(target_path: str):
         )
 
     console.print(table)
-    console.print("\n[dim]Gợi ý: Bạn có thể nhập câu hỏi để nhờ BetAker phân tích nguyên nhân và sinh bản vá tự động![/dim]")
+    console.print("\n[dim]Tip: You can ask BetAker to perform root-cause analysis or generate automated secure patches![/dim]")
 
 def handle_deps():
-    console.print("[bold green]📦 Đang quét kiểm tra các file phụ thuộc trong thư mục hiện tại...[/bold green]")
-    req_file = Path("requirements.txt")
+    console.print("[bold green]📦 Scanning dependency manifests in current directory...[/bold green]")
     findings = []
-    if req_file.exists():
-        findings.extend(scan_dependencies(req_file))
+    for manifest_name in ("requirements.txt", "package.json"):
+        manifest_path = Path(manifest_name)
+        if manifest_path.exists():
+            findings.extend(scan_dependencies(manifest_path))
 
     if not findings:
-        console.print("[bold green]✅ Tất cả thư viện phụ thuộc đều an toàn hoặc chưa phát hiện CVE đã biết![/bold green]")
+        console.print("[bold green]✅ All scanned dependencies are secure with no known CVE advisories detected![/bold green]")
     else:
         for f in findings:
-            console.print(f"[bold red]⚠️ {f['package']} ({f['current_version']}):[/bold red] {f['description']}")
+            pkg = f.get('package', 'unknown')
+            ver = f.get('current_version', 'unknown')
+            desc = f.get('description', '')
+            console.print(f"[bold red]⚠️ {pkg} ({ver}):[/bold red] {desc}")
 
 def handle_rollback(filepath: str):
     success, msg = rollback_backup(Path(filepath))
@@ -89,22 +95,71 @@ def handle_rollback(filepath: str):
     else:
         console.print(f"[bold red]❌ {msg}[/bold red]")
 
+def handle_report():
+    report_file = Config.WORKSPACE_DIR / f"security_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    findings = scan_directory(".")
+    dep_findings = []
+    for manifest_name in ("requirements.txt", "package.json"):
+        manifest_path = Path(manifest_name)
+        if manifest_path.exists():
+            dep_findings.extend(scan_dependencies(manifest_path))
+
+    lines = [
+        "# 🛡️ BetAker Security Audit Report",
+        f"\n**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        f"**Workspace:** `{Config.WORKSPACE_DIR}`",
+        f"**Author / Credit:** `jack.vhknguyen@gmail.com` (@toilanguyen2910)",
+        "\n---",
+        f"\n## Summary",
+        f"- **Static Code Findings (SAST):** {len(findings)}",
+        f"- **Vulnerable Dependencies (SCA):** {len(dep_findings)}",
+        "\n---",
+        "\n## Static Code Analysis Findings",
+    ]
+
+    if not findings:
+        lines.append("\n*No code vulnerabilities detected.*")
+    else:
+        for i, f in enumerate(findings, 1):
+            lines.append(f"\n### {i}. [{f.get('severity', 'MEDIUM')}] {f.get('title', 'Finding')}")
+            lines.append(f"- **File:** `{f.get('file', '')}:{f.get('line', '?')}`")
+            lines.append(f"- **Category:** {f.get('category', 'OWASP Top 10')}")
+            lines.append(f"- **Description:** {f.get('description', '')}")
+            if f.get('snippet'):
+                lines.append(f"```\n{f.get('snippet')}\n```")
+
+    lines.append("\n---")
+    lines.append("\n## Dependency Audit Findings (SCA)")
+    if not dep_findings:
+        lines.append("\n*No vulnerable dependencies detected.*")
+    else:
+        for i, df in enumerate(dep_findings, 1):
+            lines.append(f"\n### {i}. [{df.get('severity', 'MEDIUM')}] {df.get('package', '')} ({df.get('current_version', '')})")
+            lines.append(f"- **CVE:** `{df.get('cve', 'N/A')}`")
+            lines.append(f"- **Advisory:** {df.get('description', '')}")
+            if df.get('fixed_version'):
+                lines.append(f"- **Recommended Fixed Version:** `{df.get('fixed_version')}`")
+
+    report_content = "\n".join(lines)
+    report_file.write_text(report_content, encoding="utf-8")
+    console.print(f"[bold green]✅ Security audit report generated successfully:[/bold green] [cyan]{report_file}[/cyan]")
+
 def main():
     Config.ensure_workspace()
     console.print(BANNER)
     
-    info_panel = f"""[bold]Dự án:[/bold] [bold cyan]BetAker[/bold cyan] | [bold]Tác giả:[/bold] [bold magenta]@toilanguyen2910[/bold magenta]
+    info_panel = f"""[bold]Project:[/bold] [bold cyan]BetAker[/bold cyan] | [bold]Author:[/bold] [bold magenta]jack.vhknguyen@gmail.com (@toilanguyen2910)[/bold magenta]
 [bold]Provider:[/bold] [green]{Config.LLM_PROVIDER}[/green] | [bold]Model:[/bold] [yellow]{Config.LLM_MODEL}[/yellow]
-[bold]Approval Gate:[/bold] [cyan]{'BẬT (Human-in-the-loop)' if Config.REQUIRE_APPROVAL else 'TẮT (Auto)'}[/cyan]
+[bold]Approval Gate:[/bold] [cyan]{'ENABLED (Human-in-the-loop)' if Config.REQUIRE_APPROVAL else 'DISABLED (Auto)'}[/cyan]
 [bold]Workspace:[/bold] [dim]{Config.WORKSPACE_DIR}[/dim]"""
-    console.print(Panel(info_panel, title="Cấu hình hệ thống", border_style="cyan"))
-    console.print("[dim]Gõ lệnh như /audit . để kiểm toán, hoặc gõ câu hỏi để trò chuyện với AI (gõ /help để xem hướng dẫn).[/dim]\n")
+    console.print(Panel(info_panel, title="System Configuration", border_style="cyan"))
+    console.print("[dim]Type commands like '/audit .' to scan code, or ask questions to interact with AI (type '/help' for options).[/dim]\n")
 
     try:
         agent = BetAkerAgent()
     except Exception as e:
-        console.print(f"[bold red]❌ Lỗi khởi tạo LLM Client:[/bold red] {e}")
-        console.print("[yellow]💡 Hãy kiểm tra lại file .env đã điền đúng API Key và Provider chưa.[/yellow]")
+        console.print(f"[bold red]❌ LLM Client Initialization Error:[/bold red] {e}")
+        console.print("[yellow]💡 Please check your .env configuration and verify your API Key and Provider.[/yellow]")
         sys.exit(1)
 
     while True:
@@ -114,7 +169,7 @@ def main():
                 continue
 
             if user_input.lower() in ("/exit", "exit", "quit", ":q"):
-                console.print("[bold yellow]Tạm biệt! Chúc bạn bảo mật mã nguồn an toàn! 🛡️[/bold yellow]")
+                console.print("[bold yellow]Goodbye! Happy and secure coding! 🛡️[/bold yellow]")
                 break
             elif user_input.lower() == "/help":
                 print_help()
@@ -130,34 +185,37 @@ def main():
             elif user_input.lower().startswith("/rollback"):
                 parts = user_input.split(maxsplit=1)
                 if len(parts) < 2:
-                    console.print("[yellow]Vui lòng chỉ định đường dẫn file cần rollback: /rollback <filepath>[/yellow]")
+                    console.print("[yellow]Please specify a target file path: /rollback <filepath>[/yellow]")
                 else:
                     handle_rollback(parts[1])
                 continue
+            elif user_input.lower() == "/report":
+                handle_report()
+                continue
             elif user_input.lower() == "/clear":
                 agent.history = [{"role": "system", "content": agent.history[0]["content"]}]
-                console.print("[green]Đã làm mới phiên hội thoại![/green]")
+                console.print("[green]Conversation session reset successfully![/green]")
                 continue
             elif user_input.lower() == "/files":
                 from tools.file_ops import list_workspace_files
                 files = list_workspace_files()
                 if not files:
-                    console.print("[yellow]Thư mục workspace đang trống.[/yellow]")
+                    console.print("[yellow]Workspace directory is currently empty.[/yellow]")
                 else:
                     for f in files:
                         console.print(f" • [cyan]{f['name']}[/cyan] ({f['size_bytes']} bytes)")
                 continue
 
-            with console.status("[bold green]BetAker đang phân tích và suy luận...[/bold green]"):
+            with console.status("[bold green]BetAker is analyzing and reasoning...[/bold green]"):
                 response = agent.step(user_input)
 
-            console.print("\n[bold cyan]─── Phân tích & Đề xuất của BetAker ───[/bold cyan]")
+            console.print("\n[bold cyan]─── BetAker Analysis & Recommendations ───[/bold cyan]")
             console.print(Markdown(response))
 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Đã ngắt thao tác bởi người dùng (Ctrl+C).[/yellow]")
+            console.print("\n[yellow]Operation interrupted by user (Ctrl+C).[/yellow]")
         except Exception as e:
-            console.print(f"[bold red]❌ Gặp lỗi:[/bold red] {str(e)}")
+            console.print(f"[bold red]❌ Error encountered:[/bold red] {str(e)}")
 
 if __name__ == "__main__":
     main()

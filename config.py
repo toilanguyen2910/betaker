@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Tải cấu hình từ .env nếu tồn tại
+# Load configuration from .env if present
 load_dotenv()
 
 class Config:

@@ -1,76 +1,170 @@
 # 🛡️ BetAker
 
 > **AI-Powered Security Code Auditor & Automated Patching CLI Tool**  
-> Trợ lý AI dòng lệnh chuyên sâu về kiểm toán an ninh mã nguồn và tự động tạo bản vá bảo mật.
+> An autonomous command-line security assistant for static code vulnerability analysis (SAST), dependency security auditing (SCA), root-cause analysis, and verified safe patch generation.
+
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests Passing](https://img.shields.io/badge/tests-221%20passed-brightgreen.svg)]()
+[![Security: OWASP Top 10](https://img.shields.io/badge/security-OWASP%20Top%2010-red.svg)](https://owasp.org/www-project-top-ten/)
 
 ---
 
-## 🚀 Tính Năng Nổi Bật
+## 🌟 Key Features
 
-* 🔍 **Bộ Quét Đa Ngôn Ngữ (Polyglot SAST)**: Hỗ trợ quét và phát hiện các lỗ hổng theo chuẩn **OWASP Top 10** trên **Python, JavaScript/TypeScript, Go, PHP**:
-  * SQL Injection (SQLi)
-  * Command Injection (CMDi)
-  * Path Traversal
-  * Insecure Deserialization
-  * Hardcoded Secrets & API Keys
-  * SSRF & Cross-Site Scripting (XSS)
-* 📦 **Kiểm Tra Lỗ Hổng Phụ Thuộc (SCA)**: Tự động phân tích các tệp tin `requirements.txt` và `package.json` đối chiếu với cơ sở dữ liệu tư vấn CVE để cảnh báo các thư viện bị lỗi.
-* 🤖 **AI Root Cause Analysis & Auto-Patching**: Kết nối với mô hình AI (**DeepSeek**, Gemini, OpenAI) để phân tích nguyên nhân gốc rễ và tự động sinh bản vá code an toàn.
-* 🛡️ **An Toàn Tuyệt Đối Khi Vá Lỗi**:
-  * Xem trước bảng so sánh khác biệt (**Unified Diff**).
-  * Tự động tạo file sao lưu `.bak` trước khi ghi đè.
-  * Hỗ trợ lệnh `/rollback` để hoàn tác code ngay lập tức nếu cần.
-* 💻 **Giao Diện Rich Terminal CLI**: Bảng màu trực quan, phân loại mức độ rủi ro (Critical, High, Medium, Low), hỗ trợ các lệnh tương tác: `/audit`, `/deps`, `/rollback`, `/report`.
-* ✅ **Hệ Thống Kiểm Thử Tự Động**: Tích hợp sẵn 176+ test cases E2E và adversarial probes với tỷ lệ thành công 100%.
+* 🔍 **Polyglot SAST Engine (Zero External Dependencies)**
+  * Scans source code across **Python, JavaScript/TypeScript, Go, and PHP** for **OWASP Top 10** vulnerabilities:
+    * **SQL Injection (SQLi)**: Parameter concatenation, raw f-strings, unescaped string formatting.
+    * **Command Injection (CMDi)**: Shell executions (`subprocess(shell=True)`, `os.system`, `child_process.exec`, `exec.Command("sh", "-c")`, `passthru`).
+    * **Path Traversal / LFI**: Unsanitized user inputs passed to file reading/opening routines.
+    * **Insecure Deserialization**: `pickle.loads`, `yaml.load(Loader=Loader)`, `unserialize($_POST)`.
+    * **Hardcoded Secrets & API Keys**: High-entropy token detection, AWS keys, JWT tokens, private keys, API secrets with test-token exclusion.
+    * **Server-Side Request Forgery (SSRF) & Cross-Site Scripting (XSS)**.
+* 📦 **Offline Software Composition Analysis (SCA)**
+  * Audits dependency manifest files (`requirements.txt`, `package.json`) against an embedded curated CVE advisory database.
+  * Robust SemVer & PEP 440 version specifier engine handling complex ranges (`^`, `~`, `~=`, wildcards, prerelease tags).
+* 🤖 **Multi-Provider AI Root Cause Analysis & Auto-Patcher**
+  * Pluggable LLM backends: **DeepSeek** (`deepseek-chat`), **Google Gemini** (`gemini-2.5-flash`), **OpenAI** (`gpt-4o`), and **OpenRouter**.
+  * Performs deep technical root-cause analysis and outputs clean, production-ready replacement code preserving existing business logic.
+* 🛡️ **Safe Patching & Rollback Architecture**
+  * Displays interactive **Unified Diffs** before writing changes.
+  * Automatically creates timestamped `.bak` backups before modifying files.
+  * Instant `/rollback <filepath>` command to revert files to original pristine state.
+* 💻 **Interactive Rich Terminal CLI**
+  * Color-coded severity indicators (**CRITICAL**, **HIGH**, **MEDIUM**, **LOW**).
+  * Built-in command suite: `/audit`, `/deps`, `/rollback`, `/report`, `/files`, `/clear`, `/help`, `/exit`.
+* ✅ **Comprehensive Automated Verification**
+  * **221 automated tests** covering end-to-end flows, adversarial edge cases, syntax boundary probes, and sandbox containment.
 
 ---
 
-## ⚡ Cài Đặt & Sử Dụng
+## 🏗️ System Architecture
 
-### 1. Cài đặt môi trường
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                       BetAker CLI                           │
+│     (Rich Terminal Interface & Interactive Command Loop)    │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │                               │
+       /audit  │                               │ /deps
+               ▼                               ▼
+  ┌─────────────────────────┐     ┌─────────────────────────┐
+  │   Polyglot SAST Engine  │     │    Offline SCA Engine   │
+  │ (Python, JS/TS, Go, PHP)│     │(requirements, pkg.json) │
+  └────────────┬────────────┘     └────────────┬────────────┘
+               │                               │
+               └───────────────┬───────────────┘
+                               │ Vulnerability Findings
+                               ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │            BetAker AI Agent (ReAct Loop)                │
+  │   - Multi-Provider Adapter: DeepSeek, Gemini, OpenAI    │
+  │   - Root Cause Analysis & Secure Patch Synthesis        │
+  └────────────────────────────┬────────────────────────────┘
+                               │ Generated Patch
+                               ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │                 Safe Patch Engine                       │
+  │   - Unified Diff Generator                              │
+  │   - .bak Backup Creator & /rollback Recovery            │
+  └─────────────────────────────────────────────────────────┘
+```
 
-1. Sao chép file cấu hình mẫu `.env.example` thành `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Điền API Key trong file `.env` (ví dụ DeepSeek hoặc Gemini):
-   ```env
-   LLM_PROVIDER=deepseek
-   LLM_MODEL=deepseek-chat
-   DEEPSEEK_API_KEY=your_deepseek_api_key
-   ```
+---
 
-3. Cài đặt các thư viện phụ thuộc:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 🚀 Quickstart & Installation
 
-### 2. Khởi chạy BetAker
+### 1. Prerequisites
+* Python 3.10 or higher
+* Git
 
+### 2. Clone Repository
+```bash
+git clone https://github.com/toilanguyen2910/betaker.git
+cd betaker
+```
+
+### 3. Setup Virtual Environment & Install Dependencies
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# On Linux/macOS:
+source .venv/bin/activate
+# On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# Install required packages
+pip install -r requirements.txt
+```
+
+### 4. Configure Environment Variables
+Copy `.env.example` to `.env` and configure your preferred LLM provider:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```env
+# Choose provider: deepseek, gemini, openai, or openrouter
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-chat
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+
+# Security Settings
+REQUIRE_APPROVAL=true
+COMMAND_TIMEOUT_SECONDS=60
+WORKSPACE_DIR=./workspace
+```
+
+### 5. Launch BetAker
 ```bash
 python main.py
 ```
 
-### 3. Các lệnh điều khiển trong CLI:
-* `/audit <đường_dẫn>`: Quét kiểm toán an ninh cho một file hoặc toàn bộ thư mục dự án.
-* `/deps`: Quét các thư viện phụ thuộc để tìm CVE đã biết.
-* `/rollback <file>`: Khôi phục lại file gốc từ bản sao lưu `.bak`.
-* `/report`: Xuất báo cáo kiểm toán bảo mật chi tiết ra file Markdown trong thư mục workspace.
-* `/help`: Hiển thị hướng dẫn sử dụng.
-* `/exit`: Thoát chương trình.
+---
+
+## 📖 CLI Command Reference
+
+| Command | Description |
+|---|---|
+| `/audit <file_or_dir>` | Perform static security audit (SAST) on a file or entire directory |
+| `/deps` | Scan dependency manifests (`requirements.txt`, `package.json`) for known CVEs |
+| `/rollback <filepath>` | Revert file to original state using its `.bak` backup |
+| `/report` | Export a Markdown security audit report to the workspace |
+| `/files` | List all files tracked in the workspace sandbox |
+| `/clear` | Clear conversation context and reset session memory |
+| `/help` | Display command reference and system guide |
+| `/exit` | Gracefully quit the application |
+
+You can also type any security query or paste code directly into the prompt to request AI explanations and automated patches.
 
 ---
 
-## 🧪 Chạy Kiểm Thử Tự Động
+## 🧪 Running the Test Suite
+
+BetAker comes with an automated test suite verifying SAST accuracy, SCA range evaluation, patch application, and edge cases:
 
 ```bash
-pytest tests/
+python -m pytest tests/ -v
 ```
 
-Toàn bộ 176 bài test sẽ được thực thi tự động để kiểm tra độ chính xác của bộ lọc SAST, bộ phân tích SemVer SCA, và cơ chế vá lỗi an toàn.
+All **221 tests** execute in seconds without external network dependencies.
 
 ---
 
-## 📄 Bản Quyền & Giấy Phép
+## 👥 Authors & Credits
 
-Phát triển bởi [@toilanguyen2910](https://github.com/toilanguyen2910) - Được phát hành theo giấy phép MIT.
+* **Author:** [jack.vhknguyen@gmail.com](mailto:jack.vhknguyen@gmail.com)
+* **GitHub:** [@toilanguyen2910](https://github.com/toilanguyen2910)
+* **Repository:** [https://github.com/toilanguyen2910/betaker](https://github.com/toilanguyen2910/betaker)
+
+Contributions, bug reports, and feature requests are welcome!
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

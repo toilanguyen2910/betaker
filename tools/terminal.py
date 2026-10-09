@@ -16,17 +16,17 @@ DANGEROUS_PATTERNS = [
 ]
 
 def is_dangerous_command(command: str) -> Tuple[bool, str]:
-    """Kiểm tra xem lệnh có chứa mẫu nguy hiểm có thể phá hủy hệ điều hành hay không."""
+    """Check whether the command matches known destructive system patterns."""
     cmd_clean = command.strip().lower()
     for pattern in DANGEROUS_PATTERNS:
         if re.search(pattern, cmd_clean):
-            return True, f"Lệnh bị chặn bởi cơ chế bảo vệ an toàn (chứa pattern nguy hiểm: '{pattern}')"
+            return True, f"Command blocked by security guardrails / Lệnh bị chặn bởi cơ chế bảo vệ an toàn (chứa pattern nguy hiểm: '{pattern}')"
     return False, ""
 
 def execute_command(command: str, timeout: int = None) -> Tuple[int, str, str]:
     """
-    Thực thi một lệnh shell trên hệ thống, kèm theo cơ chế timeout và bắt lỗi.
-    Trả về: (returncode, stdout, stderr)
+    Execute a shell command with timeout enforcement and buffer truncation.
+    Returns: (returncode, stdout, stderr)
     """
     if timeout is None:
         timeout = Config.COMMAND_TIMEOUT
@@ -36,7 +36,7 @@ def execute_command(command: str, timeout: int = None) -> Tuple[int, str, str]:
         return -1, "", reason
 
     try:
-        # Chạy trong shell để hỗ trợ các cú pháp pipe, redirect hoặc công cụ CLI
+        # Run inside shell to support pipes and CLI utilities
         process = subprocess.run(
             command,
             shell=True,
@@ -48,14 +48,14 @@ def execute_command(command: str, timeout: int = None) -> Tuple[int, str, str]:
         stdout = process.stdout or ""
         stderr = process.stderr or ""
         
-        # Cắt tỉa output nếu quá dài để tránh tràn context token
+        # Truncate oversized output to avoid context overflow
         max_output_chars = 15000
         if len(stdout) > max_output_chars:
-            stdout = stdout[:max_output_chars] + f"\n\n... [Output bị cắt bớt {len(stdout) - max_output_chars} ký tự vì quá dài] ..."
+            stdout = stdout[:max_output_chars] + f"\n\n... [Output truncated / Output bị cắt bớt {len(stdout) - max_output_chars} characters because it was too long] ..."
             
         return process.returncode, stdout, stderr
 
     except subprocess.TimeoutExpired:
-        return -2, "", f"Lỗi: Lệnh vượt quá thời gian cho phép ({timeout} giây) và đã bị ngắt tự động."
+        return -2, "", f"Error: Command timed out after {timeout}s / Lỗi: Lệnh vượt quá thời gian cho phép ({timeout} giây) và đã bị ngắt tự động."
     except Exception as e:
-        return -3, "", f"Lỗi thực thi hệ thống: {str(e)}"
+        return -3, "", f"Execution error / Lỗi thực thi hệ thống: {str(e)}"

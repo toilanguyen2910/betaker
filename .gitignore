@@ -1,4 +1,4 @@
-# Environment & Secrets (Không bao giờ commit file .env chứa API Key)
+# Environment & Secrets (Never commit .env files containing API Keys)
 .env
 *.env
 !.env.example
